@@ -5,7 +5,10 @@ import 'message_state.dart';
 class MessageNotifier extends StateNotifier<MessageState> {
   final MessageService _service;
 
-  MessageNotifier(this._service) : super(const MessageState());
+  MessageNotifier(this._service) : super(const MessageState()) {
+    // Initialize realtime subscription
+    _initializeRealtimeSubscription();
+  }
 
   Future<void> fetchMessages() async {
     // Always set loading state first
@@ -33,7 +36,7 @@ class MessageNotifier extends StateNotifier<MessageState> {
         name: name,
         message: message,
       );
-      await fetchMessages();
+      // No need to fetch messages - realtime will handle the update
     } catch (e) {
       state = state.copyWith(error: e.toString());
     } finally {
@@ -48,7 +51,7 @@ class MessageNotifier extends StateNotifier<MessageState> {
   }) async {
     try {
       await _service.updateMessage(id: id, name: name, message: message);
-      await fetchMessages();
+      // No need to fetch messages - realtime will handle the update
     } catch (e) {
       state = state.copyWith(error: e.toString());
     }
@@ -57,7 +60,7 @@ class MessageNotifier extends StateNotifier<MessageState> {
   Future<void> deleteMessage(String id) async {
     try {
       await _service.deleteMessage(id);
-      await fetchMessages();
+      // No need to fetch messages - realtime will handle the update
     } catch (e) {
       state = state.copyWith(error: e.toString());
     }
@@ -72,6 +75,53 @@ class MessageNotifier extends StateNotifier<MessageState> {
   void clearMessagesAndLoad() {
     state = state.copyWith(messages: [], isLoading: true, error: null);
   }
+
+  // Realtime subscription methods
+  void _initializeRealtimeSubscription() {
+    _service.subscribeToMessages(
+      onMessageInserted: (message) {
+        // Add new message to the beginning of the list
+        final updatedMessages = [message, ...state.messages];
+        state = state.copyWith(messages: updatedMessages);
+        print('Realtime: Message inserted - ${message.id}');
+      },
+      onMessageUpdated: (updatedMessage) {
+        // Update existing message in the list
+        final updatedMessages = state.messages.map((message) {
+          return message.id == updatedMessage.id ? updatedMessage : message;
+        }).toList();
+        state = state.copyWith(messages: updatedMessages);
+        print('Realtime: Message updated - ${updatedMessage.id}');
+      },
+      onMessageDeleted: (messageId) {
+        // Remove deleted message from the list
+        final updatedMessages = state.messages
+            .where((message) => message.id != messageId)
+            .toList();
+        state = state.copyWith(messages: updatedMessages);
+        print('Realtime: Message deleted - $messageId');
+      },
+      onError: (error) {
+        print('Realtime error: $error');
+        state = state.copyWith(error: error);
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _service.unsubscribeFromMessages();
+    super.dispose();
+  }
+
+  // Method to manually refresh realtime subscription
+  void refreshRealtimeSubscription() {
+    _service.unsubscribeFromMessages();
+    _initializeRealtimeSubscription();
+  }
+
+  // Method to check if realtime is connected
+  bool get isRealtimeConnected => _service.isSubscribed;
 }
 
 final messageProvider = StateNotifierProvider<MessageNotifier, MessageState>((

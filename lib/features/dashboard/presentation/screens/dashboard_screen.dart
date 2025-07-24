@@ -205,7 +205,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             child: ElevatedButton(
               onPressed: () => context.pop(true),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red[700],
+                backgroundColor: Colors.red,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
@@ -218,17 +218,37 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         ],
       ),
     );
+
     if (confirm == true) {
       await ref.read(messageProvider.notifier).deleteMessage(id);
-      if (!mounted) return;
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(AppStrings.messageDeleted),
+          content: Text('Message deleted!'),
           backgroundColor: Colors.green,
         ),
       );
       // Refresh analytics after deleting message
       refreshAnalytics(ref);
+    }
+  }
+
+  void _testRealtimeConnection() {
+    final notifier = ref.read(messageProvider.notifier);
+    if (notifier.isRealtimeConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ Realtime is connected and working!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('❌ Realtime connection failed'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -268,6 +288,46 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           ],
         ),
         actions: [
+          // Realtime status indicator
+          Consumer(
+            builder: (context, ref, _) {
+              final isConnected = ref
+                  .watch(messageProvider.notifier)
+                  .isRealtimeConnected;
+              return Container(
+                margin: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isConnected ? Colors.green : Colors.red,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isConnected ? Icons.wifi : Icons.wifi_off,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      isConnected ? 'Live' : 'Offline',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.wifi, color: Colors.white),
+            tooltip: 'Test Realtime Connection',
+            onPressed: _testRealtimeConnection,
+          ),
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
             tooltip: 'Refresh Messages',

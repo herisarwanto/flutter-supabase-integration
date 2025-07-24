@@ -1,12 +1,13 @@
 class AppConfig {
   static const String supabaseUrl = String.fromEnvironment(
     'SUPABASE_URL',
-    defaultValue: 'YOUR_SUPABASE_URL',
+    defaultValue: 'https://fhpfmepyofhywrfizfuw.supabase.co',
   );
 
   static const String supabaseAnonKey = String.fromEnvironment(
     'SUPABASE_ANON_KEY',
-    defaultValue: 'YOUR_SUPABASE_ANON_KEY',
+    defaultValue:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZocGZtZXB5b2ZoeXdyZml6ZnV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMxMDMzMjYsImV4cCI6MjA2ODY3OTMyNn0.cxVPrzSYzO1DcP2QXZ2HJzuXD7jThNi5w0hDmrD-aZw',
   );
 
   static const List<String> allowedSchemes = [

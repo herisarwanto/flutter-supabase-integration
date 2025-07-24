@@ -27,4 +27,19 @@ class AppStrings {
   static const emailIsRequired = 'Email is required';
   static const enterAValidEmail = 'Enter a valid email';
   static const noMessagesYet = 'No messages yet.';
+  static const dashboard = 'Dashboard';
+  static const messages = 'Messages';
+  static const analytics = 'Analytics';
+  static const addMessage = 'Add Message';
+  static const refreshMessages = 'Refresh Messages';
+  static const logout = 'Logout';
+  static const reconnectRealtime = 'Reconnect Realtime';
+  static const reconnectingToRealtime = 'Reconnecting to realtime...';
+  static const logoutFailed = 'Logout failed!';
+  static const statusError = 'Error';
+  static const statusLive = 'Live';
+  static const statusConnecting = 'Connecting...';
+  static const statusOffline = 'Offline';
+  static const editMessage = 'Edit Message';
+  static const messageUpdatedSuccess = 'Message updated!';
 }

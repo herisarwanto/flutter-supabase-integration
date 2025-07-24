@@ -1,9 +1,12 @@
+import 'dart:developer';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../domain/model/message_model.dart';
 
 class MessageService {
   final _client = Supabase.instance.client;
   RealtimeChannel? _channel;
+  bool _isConnecting = false;
 
   Future<void> createMessage({
     required String userId,
@@ -43,71 +46,116 @@ class MessageService {
   }
 
   // Realtime subscription methods
-  RealtimeChannel subscribeToMessages({
-    required Function(Message) onMessageInserted,
-    required Function(Message) onMessageUpdated,
-    required Function(String) onMessageDeleted,
+  void subscribeToMessages({
+    required Function(List<Message>) onMessagesChanged,
     required Function(String) onError,
+    required Function(bool) onConnectionStatusChanged,
   }) {
-    // Clean up existing subscription if any
-    _channel?.unsubscribe();
+    if (_isConnecting || _channel != null) {
+      log('Realtime: Already connected or connecting');
+      return;
+    }
 
-    _channel = _client
-        .channel('messages_changes')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'messages',
-          callback: (payload) {
-            try {
-              final message = Message.fromMapSafe(payload.newRecord);
-              onMessageInserted(message);
-            } catch (e) {
-              onError('Error parsing inserted message: $e');
+    _isConnecting = true;
+    onConnectionStatusChanged(false); 
+
+    try {
+      unsubscribeFromMessages();
+
+      _channel = _client
+          .channel('messages_changes_${DateTime.now().millisecondsSinceEpoch}')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'messages',
+            callback: (payload) {
+              _fetchMessagesForRealtime(onMessagesChanged, onError);
+            },
+          )
+          .subscribe((status, [error]) {
+            _isConnecting = false;
+
+            if (error != null) {
+              log('Realtime: Subscription error - $error');
+              onError('Connection error: ${error.toString()}');
+              onConnectionStatusChanged(false);
+            } else {
+              onConnectionStatusChanged(
+                status == RealtimeSubscribeStatus.subscribed,
+              );
+
+              if (status == RealtimeSubscribeStatus.subscribed) {
+                log('Realtime: Successfully connected');
+                _fetchMessagesForRealtime(onMessagesChanged, onError);
+              } else if (status == RealtimeSubscribeStatus.closed ||
+                  status == RealtimeSubscribeStatus.channelError) {
+                log('Realtime: Connection closed or error');
+                onConnectionStatusChanged(false);
+                _attemptReconnection(
+                  onMessagesChanged,
+                  onError,
+                  onConnectionStatusChanged,
+                );
+              } else if (status == RealtimeSubscribeStatus.timedOut) {
+                log('Realtime: Connection timed out');
+                onError(
+                  'Connection timed out. Please check your internet connection.',
+                );
+                onConnectionStatusChanged(false);
+              }
             }
-          },
-        )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.update,
-          schema: 'public',
-          table: 'messages',
-          callback: (payload) {
-            try {
-              final message = Message.fromMapSafe(payload.newRecord);
-              onMessageUpdated(message);
-            } catch (e) {
-              onError('Error parsing updated message: $e');
-            }
-          },
-        )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.delete,
-          schema: 'public',
-          table: 'messages',
-          callback: (payload) {
-            try {
-              final messageId = payload.oldRecord['id'] as String;
-              onMessageDeleted(messageId);
-            } catch (e) {
-              onError('Error parsing deleted message: $e');
-            }
-          },
+          });
+    } catch (e) {
+      _isConnecting = false;
+      log('Realtime: Setup error - $e');
+      onError('Setup error: ${e.toString()}');
+      onConnectionStatusChanged(false);
+    }
+  }
+
+  void _attemptReconnection(
+    Function(List<Message>) onMessagesChanged,
+    Function(String) onError,
+    Function(bool) onConnectionStatusChanged,
+  ) {
+    Future.delayed(Duration(seconds: 3), () {
+      if (_channel == null) {
+        subscribeToMessages(
+          onMessagesChanged: onMessagesChanged,
+          onError: onError,
+          onConnectionStatusChanged: onConnectionStatusChanged,
         );
-
-    _channel!.subscribe((status, [error]) {
-      if (error != null) {
-        onError('Subscription error: $error');
       }
-      print('Realtime subscription status: $status');
     });
-
-    return _channel!;
   }
 
   void unsubscribeFromMessages() {
-    _channel?.unsubscribe();
-    _channel = null;
+    if (_channel != null) {
+      log('Realtime: Unsubscribing...');
+      _channel!.unsubscribe();
+      _channel = null;
+    }
+    _isConnecting = false;
   }
 
-  bool get isSubscribed => _channel != null;
+  Future<void> _fetchMessagesForRealtime(
+    Function(List<Message>) onMessagesChanged,
+    Function(String) onError,
+  ) async {
+    try {
+      final messages = await getMessages();
+      onMessagesChanged(messages);
+    } catch (e) {
+      log('Realtime: Error fetching messages - $e');
+      onError('Fetch error: ${e.toString()}');
+    }
+  }
+
+  bool get isSubscribed => _channel != null && !_isConnecting;
+
+  String get connectionStatus {
+    if (_isConnecting) return 'connecting';
+    if (_channel != null) return 'connected';
+    return 'disconnected';
+  }
 }

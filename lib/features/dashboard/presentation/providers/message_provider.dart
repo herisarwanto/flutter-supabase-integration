@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/message_service.dart';
 import 'message_state.dart';
@@ -5,21 +7,16 @@ import 'message_state.dart';
 class MessageNotifier extends StateNotifier<MessageState> {
   final MessageService _service;
 
-  MessageNotifier(this._service) : super(const MessageState()) {
-    // Initialize realtime subscription
-    _initializeRealtimeSubscription();
-  }
+  MessageNotifier(this._service) : super(const MessageState());
 
   Future<void> fetchMessages() async {
-    // Always set loading state first
     state = state.copyWith(isLoading: true, error: null);
 
     try {
       final messages = await _service.getMessages();
-      print('Fetched ${messages.length} messages'); // Debug log
       state = state.copyWith(messages: messages, isLoading: false);
     } catch (e) {
-      print('Error fetching messages: $e'); // Debug log
+      log('Error fetching messages: $e');
       state = state.copyWith(error: e.toString(), isLoading: false);
     }
   }
@@ -36,7 +33,6 @@ class MessageNotifier extends StateNotifier<MessageState> {
         name: name,
         message: message,
       );
-      // No need to fetch messages - realtime will handle the update
     } catch (e) {
       state = state.copyWith(error: e.toString());
     } finally {
@@ -51,7 +47,6 @@ class MessageNotifier extends StateNotifier<MessageState> {
   }) async {
     try {
       await _service.updateMessage(id: id, name: name, message: message);
-      // No need to fetch messages - realtime will handle the update
     } catch (e) {
       state = state.copyWith(error: e.toString());
     }
@@ -60,68 +55,61 @@ class MessageNotifier extends StateNotifier<MessageState> {
   Future<void> deleteMessage(String id) async {
     try {
       await _service.deleteMessage(id);
-      // No need to fetch messages - realtime will handle the update
     } catch (e) {
       state = state.copyWith(error: e.toString());
     }
   }
 
-  // Method to force loading state for testing
-  void setLoadingState() {
-    state = state.copyWith(isLoading: true, error: null);
-  }
-
-  // Method to clear messages and show loading
-  void clearMessagesAndLoad() {
-    state = state.copyWith(messages: [], isLoading: true, error: null);
-  }
-
   // Realtime subscription methods
-  void _initializeRealtimeSubscription() {
+  void startRealtimeSubscription() {
     _service.subscribeToMessages(
-      onMessageInserted: (message) {
-        // Add new message to the beginning of the list
-        final updatedMessages = [message, ...state.messages];
-        state = state.copyWith(messages: updatedMessages);
-        print('Realtime: Message inserted - ${message.id}');
-      },
-      onMessageUpdated: (updatedMessage) {
-        // Update existing message in the list
-        final updatedMessages = state.messages.map((message) {
-          return message.id == updatedMessage.id ? updatedMessage : message;
-        }).toList();
-        state = state.copyWith(messages: updatedMessages);
-        print('Realtime: Message updated - ${updatedMessage.id}');
-      },
-      onMessageDeleted: (messageId) {
-        // Remove deleted message from the list
-        final updatedMessages = state.messages
-            .where((message) => message.id != messageId)
-            .toList();
-        state = state.copyWith(messages: updatedMessages);
-        print('Realtime: Message deleted - $messageId');
+      onMessagesChanged: (messages) {
+        state = state.copyWith(
+          messages: messages,
+          isLoading: false,
+          error: null,
+        );
       },
       onError: (error) {
-        print('Realtime error: $error');
+        log('Realtime error: $error');
         state = state.copyWith(error: error);
+      },
+      onConnectionStatusChanged: (isConnected) {
+        log(
+          'Realtime connection status: ${isConnected ? "Connected" : "Disconnected"}',
+        );
       },
     );
   }
 
-  @override
-  void dispose() {
+  void stopRealtimeSubscription() {
+    log('Stopping realtime subscription...');
     _service.unsubscribeFromMessages();
-    super.dispose();
   }
 
-  // Method to manually refresh realtime subscription
-  void refreshRealtimeSubscription() {
-    _service.unsubscribeFromMessages();
-    _initializeRealtimeSubscription();
+  void setLoadingState() {
+    state = state.copyWith(isLoading: true, error: null);
   }
 
-  // Method to check if realtime is connected
-  bool get isRealtimeConnected => _service.isSubscribed;
+  void clearMessagesAndLoad() {
+    state = state.copyWith(messages: [], isLoading: true, error: null);
+  }
+
+  bool get isRealtimeActive => _service.isSubscribed;
+
+  String get connectionStatus => _service.connectionStatus;
+
+  void reconnect() {
+    log('Manual reconnection requested...');
+    stopRealtimeSubscription();
+    Future.delayed(Duration(milliseconds: 500), () {
+      startRealtimeSubscription();
+    });
+  }
+
+  void clearError() {
+    state = state.copyWith(error: null);
+  }
 }
 
 final messageProvider = StateNotifierProvider<MessageNotifier, MessageState>((
